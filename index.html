@@ -1,4 +1,4 @@
- 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +10,7 @@
   .canvas-container { display:flex; gap:40px; margin-bottom:16px; }
   .panel { display:flex; flex-direction:column; align-items:center; }
   canvas { border:1px solid #888; }
-  button, label, textarea { font-size:16px; margin:4px; }
+  button, label, textarea, input { font-size:16px; margin:4px; }
   #controls { display:flex; gap:8px; align-items:center; margin-bottom:16px; }
   textarea { width:400px; height:60px; font-size:18px; }
 </style>
@@ -19,7 +19,7 @@
   <h2>Macular Vision Corrector</h2>
   <div class="canvas-container">
     <div class="panel">
-      <h4>Calibration Grid</h4>
+      <h4>Calibration Grid (Drag Points)</h4>
       <canvas id="gridCanvas" width="600" height="600"></canvas>
       <div>
         <button id="undoBtn">Undo</button>
@@ -37,6 +37,8 @@
   <div id="controls">
     <textarea id="textInput">Sample Text for AMD Correction</textarea>
     <button id="applyBtn">Apply My Correction</button>
+    <label>Font Size: <span id="fontSizeDisplay">28px</span></label>
+    <input type="range" id="fontSizeSlider" min="12" max="72" value="28">
   </div>
 <script>
 // Element refs
@@ -45,15 +47,19 @@ const previewCanvas = document.getElementById('previewCanvas'), pctx = previewCa
 const undoBtn = document.getElementById('undoBtn'), resetBtn = document.getElementById('resetBtn');
 const applyBtn = document.getElementById('applyBtn'), textInput = document.getElementById('textInput');
 const centerDotChk = document.getElementById('centerDotChk');
+const fontSizeSlider = document.getElementById('fontSizeSlider'), fontSizeDisplay = document.getElementById('fontSizeDisplay');
 
-// Reapply on toggle
+// Reapply on toggle and font change
 centerDotChk.addEventListener('change', () => applyBtn.click());
+fontSizeSlider.addEventListener('input', () => {
+  fontSizeDisplay.textContent = fontSizeSlider.value + 'px';
+  applyBtn.click();
+});
 
 // Config
-const COLS = 20, N = COLS + 1;
-const gridSize = 600;
+const COLS = 20, N = COLS + 1, gridSize = 600;
 const cellW = gridSize / COLS;
-const FONT = '28px sans-serif', LINEH = 32;
+const LINEH = () => parseInt(fontSizeSlider.value) + 4;
 
 // State
 let points = [], dragPoint = null;
@@ -64,11 +70,10 @@ for (let i = 0; i < N; i++) {
   }
 }
 
-// Draw calibration grid function
+// Draw calibration grid
 function drawGrid() {
   gctx.clearRect(0, 0, gridSize, gridSize);
   gctx.strokeStyle = '#ccc'; gctx.lineWidth = 1;
-  // Vertical
   for (let i = 0; i < N; i++) {
     gctx.beginPath();
     gctx.moveTo(points[i][0].x + points[i][0].dx, points[i][0].y + points[i][0].dy);
@@ -77,7 +82,6 @@ function drawGrid() {
     }
     gctx.stroke();
   }
-  // Horizontal
   for (let j = 0; j < N; j++) {
     gctx.beginPath();
     gctx.moveTo(points[0][j].x + points[0][j].dx, points[0][j].y + points[0][j].dy);
@@ -86,12 +90,10 @@ function drawGrid() {
     }
     gctx.stroke();
   }
-  // Dots
   points.flat().forEach(p => {
     gctx.beginPath(); gctx.arc(p.x + p.dx, p.y + p.dy, 5, 0, 2*Math.PI);
     gctx.fillStyle = '#333'; gctx.fill();
   });
-  // Center marker
   const cx = gridSize/2, cy = gridSize/2;
   gctx.strokeStyle = 'red'; gctx.lineWidth = 2;
   gctx.beginPath(); gctx.arc(cx, cy, 8, 0, 2*Math.PI); gctx.stroke();
@@ -103,22 +105,22 @@ function drawGrid() {
 
 // History
 const history = [];
-function saveState(){ history.push(points.flat().map(p=>({dx:p.dx,dy:p.dy}))); }
+function saveState() { history.push(points.flat().map(p => ({ dx: p.dx, dy: p.dy }))); }
 undoBtn.onclick = () => {
   if (history.length) {
     const last = history.pop();
-    points.flat().forEach((p,i)=>{ p.dx = last[i].dx; p.dy = last[i].dy; });
-    drawGrid();
+    points.flat().forEach((p, i) => { p.dx = last[i].dx; p.dy = last[i].dy; });
+    drawGrid(); applyBtn.click();
   }
 };
 resetBtn.onclick = () => {
-  points.flat().forEach(p=>{ p.dx = 0; p.dy = 0; });
+  points.flat().forEach(p => { p.dx = 0; p.dy = 0; });
   history.length = 0;
   drawGrid();
   pctx.clearRect(0,0, previewCanvas.width, previewCanvas.height);
 };
 
-// Drag
+// Drag events
 gridCanvas.addEventListener('pointerdown', e => {
   saveState();
   const r = gridCanvas.getBoundingClientRect();
@@ -132,76 +134,84 @@ gridCanvas.addEventListener('pointermove', e => {
   const r = gridCanvas.getBoundingClientRect();
   dragPoint.dx = e.clientX - r.left - dragPoint.x;
   dragPoint.dy = e.clientY - r.top - dragPoint.y;
-  drawGrid();
+  drawGrid(); applyBtn.click();
 });
 gridCanvas.addEventListener('pointerup', () => { dragPoint = null; });
 
 // Fourier interpolation
 const coeffDx = [], coeffDy = [];
 function computeCoeffs() {
-  for (let u=0; u<N; u++) {
+  for (let u = 0; u < N; u++) {
     coeffDx[u] = []; coeffDy[u] = [];
-    for (let v=0; v<N; v++) {
-      let rX=0,iX=0,rY=0,iY=0;
-      for (let i=0; i<N; i++) for (let j=0; j<N; j++) {
-        const ang = -2*Math.PI*(u*i/N + v*j/N);
-        const c = Math.cos(ang), s = Math.sin(ang);
-        rX += points[i][j].dx * c; iX += points[i][j].dx * s;
-        rY += points[i][j].dy * c; iY += points[i][j].dy * s;
+    for (let v = 0; v < N; v++) {
+      let rX=0, iX=0, rY=0, iY=0;
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+          const ang = -2 * Math.PI * (u*i/N + v*j/N);
+          const c = Math.cos(ang), s = Math.sin(ang);
+          rX += points[i][j].dx * c; iX += points[i][j].dx * s;
+          rY += points[i][j].dy * c; iY += points[i][j].dy * s;
+        }
       }
-      const norm = N*N;
+      const norm = N * N;
       coeffDx[u][v] = { re: rX/norm, im: iX/norm };
       coeffDy[u][v] = { re: rY/norm, im: iY/norm };
     }
   }
 }
 function fourierDist(x,y) {
-  const gx=x/cellW, gy=y/cellW;
-  let dx=0, dy=0;
-  for (let u=0; u<N; u++) for (let v=0; v<N; v++) {
-    const ang = 2*Math.PI*(u*gx/N + v*gy/N);
-    const c = Math.cos(ang), s = Math.sin(ang);
-    dx += coeffDx[u][v].re * c - coeffDx[u][v].im * s;
-    dy += coeffDy[u][v].re * c - coeffDy[u][v].im * s;
+  const gx = x / cellW, gy = y / cellW;
+  let dx = 0, dy = 0;
+  for (let u = 0; u < N; u++) {
+    for (let v = 0; v < N; v++) {
+      const ang = 2 * Math.PI * (u*gx/N + v*gy/N);
+      const c = Math.cos(ang), s = Math.sin(ang);
+      dx += coeffDx[u][v].re * c - coeffDx[u][v].im * s;
+      dy += coeffDy[u][v].re * c - coeffDy[u][v].im * s;
+    }
   }
   return { dx, dy };
 }
 
-// Apply correction!
+// Apply correction
 applyBtn.onclick = () => {
   computeCoeffs();
   pctx.clearRect(0,0, previewCanvas.width, previewCanvas.height);
-  pctx.font = FONT; pctx.textBaseline='top'; pctx.fillStyle='#000'; pctx.textAlign='left';
-  const words = textInput.value.trim().split(/\s+/).filter(w=>w);
-  let x=0, y=0;
-  const space = pctx.measureText(' ').width, maxW = previewCanvas.width;
+  const fontSize = fontSizeSlider.value + 'px';
+  pctx.font = fontSize + ' sans-serif';
+  pctx.textBaseline = 'top'; pctx.fillStyle = '#000'; pctx.textAlign = 'left';
+  const words = textInput.value.trim().split(/\s+/).filter(w => w);
+  let x=0, y=0; const space = pctx.measureText(' ').width, maxW = previewCanvas.width;
   const centers = [];
-  for (const w of words) {
-    const wW = Math.ceil(pctx.measureText(w).width), h = LINEH;
-    if (x + wW > maxW) { x = 0; y += LINEH; }
+  const lineH = LINEH();
+  words.forEach(w => {
+    const wW = Math.ceil(pctx.measureText(w).width), h = lineH;
+    if (x + wW > maxW) { x=0; y+=lineH; }
     const off = document.createElement('canvas'); off.width=wW; off.height=h;
-    const ictx = off.getContext('2d'); ictx.font=FONT; ictx.textBaseline='top'; ictx.fillStyle='#000'; ictx.fillText(w,0,0);
+    const ictx = off.getContext('2d'); ictx.font=fontSize+' sans-serif'; ictx.textBaseline='top'; ictx.fillStyle='#000'; ictx.fillText(w,0,0);
     const src = ictx.getImageData(0,0,wW,h).data;
     const dst = pctx.createImageData(wW,h);
     const cx = previewCanvas.width/2, cy = previewCanvas.height/2;
-    for (let py=0; py<h; py++) for (let px=0; px<wW; px++) {
-      const {dx,dy} = fourierDist(cx+px-wW/2, cy+py-h/2);
-      const sx = Math.round(px+dx), sy = Math.round(py+dy);
-      const si = 4*((Math.min(h-1,Math.max(0,sy))*wW)+Math.min(wW-1,Math.max(0,sx)));
-      const di = 4*((py*wW)+px);
-      dst.data.set(src.slice(si,si+4), di);
+    for (let py=0; py<h; py++) {
+      for (let px=0; px<wW; px++) {
+        const {dx, dy} = fourierDist(cx+px-wW/2, cy+py-h/2);
+        const sx = Math.round(px+dx), sy = Math.round(py+dy);
+        const si = 4 * ((Math.min(h-1,Math.max(0,sy))*wW) + Math.min(wW-1,Math.max(0,sx)));
+        const di = 4 * ((py*wW) + px);
+        dst.data.set(src.slice(si, si+4), di);
+      }
     }
     pctx.putImageData(dst, x, y);
-    centers.push({ cx: x+wW/2, cy: y+h/2 });
+    centers.push({ cx: x + wW/2, cy: y + h/2 });
     x += wW + space;
-  }
+  });
   if (centerDotChk.checked) {
     pctx.fillStyle = 'red';
-    centers.forEach(c=>{ pctx.beginPath(); pctx.arc(c.cx,c.cy,5,0,2*Math.PI); pctx.fill(); });
+    centers.forEach(c => { pctx.beginPath(); pctx.arc(c.cx, c.cy, 5, 0, 2*Math.PI); pctx.fill(); });
   }
 };
 
-// Init grid & preview
+// Init
 window.onload = () => { drawGrid(); applyBtn.click(); };
 </script>
 </body>
