@@ -100,8 +100,11 @@
     });
 
     // Config
-    const COLS = 20, N = COLS + 1, gridSize = 600;
+    const COLS = 10; // Reduced from 20 to simplify grid
+    const N = COLS + 1;
+    const gridSize = 600;
     const cellW = gridSize / COLS;
+    const margin = 20; // margin for preview
     const LINEH = () => parseInt(fontSizeSlider.value) + 4;
 
     // State
@@ -224,12 +227,14 @@
       pctx.font = fontSize + ' sans-serif';
       pctx.textBaseline = 'top'; pctx.fillStyle = '#000'; pctx.textAlign = 'left';
       const words = textInput.value.trim().split(/\s+/).filter(w => w);
-      let x = 0, y = 0; const space = pctx.measureText(' ').width, maxW = previewCanvas.width;
+      let x = margin, y = margin; 
+      const space = pctx.measureText(' ').width;
+      const maxW = previewCanvas.width - margin * 2;
       const centers = [];
       const lineH = LINEH();
       words.forEach(w => {
         const wW = Math.ceil(pctx.measureText(w).width), h = lineH;
-        if (x + wW > maxW) { x = 0; y += lineH; }
+        if (x + wW > margin + maxW) { x = margin; y += lineH; }
         const off = document.createElement('canvas'); off.width = wW; off.height = h;
         const ictx = off.getContext('2d'); ictx.font = fontSize + ' sans-serif'; ictx.textBaseline = 'top'; ictx.fillStyle = '#000';
         ictx.fillText(w, 0, 0);
