@@ -100,7 +100,8 @@
     });
 
     // Config
-    const COLS = 20, N = COLS + 1, gridSize = 600;
+    // Smaller grid with fewer points while maintaining accuracy
+    const COLS = 15, N = COLS + 1, gridSize = 600;
     const cellW = gridSize / COLS;
     const LINEH = () => parseInt(fontSizeSlider.value) + 4;
 
